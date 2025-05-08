@@ -8,23 +8,55 @@
 #include <signal.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <string.h> // For system commands
+
+// Global variables for signal handling
+int secret_pipe[2]; // Pipe for passing secret number
+
+// Signal handler for SIGUSR1
+void sigusr1_handler(int signum) {
+    (void)signum; // To avoid unused parameter warning
+    
+    // Read the secret number from the pipe
+    int secret;
+    read(secret_pipe[0], &secret, sizeof(int));
+    
+    printf("Process %d received secret number: %d\n", getpid(), secret);
+    // Raise the signal corresponding to the secret number
+    raise(secret);
+}
+
+// Signal handler for the secret number signal
+void secret_signal_handler(int signum) {
+    printf("Process %d terminating due to secret signal %d\n", getpid(), signum);
+    exit(0); // Terminate without becoming a zombie
+}
+
+// SIGINT handler for Rule 3
+void sigint_handler(int signum) {
+    (void)signum; // To avoid unused parameter warning
+    printf("Child %d received SIGINT but will not terminate. My parent is %d\n", 
+           getpid(), getppid());
+    // Do not terminate, just print info
+}
 
 // Print how child terminated/exited to terminal
 void childTerminationAnalysis(int pid, int w, int status){
-	if (w) {
-		if (WIFEXITED(status)){
-		    printf("Child %d exited naturally\n", pid);
-		}
-		else if (WIFSIGNALED(status)){
-			printf("Child %d killed by signal: %d\n", pid, WTERMSIG(status));
-		}
-		else if (WIFSTOPPED(status)){
-			printf("Child %d stopped by signal %d\n", pid, WSTOPSIG(status));
-		}
-		else if (WIFCONTINUED(status)){
-			printf("Child %d continued\n", pid);
-		}
-	}
+    if (w) {
+        if (WIFEXITED(status)){
+            printf("Child %d exited naturally with exit code %d\n", pid, WEXITSTATUS(status));
+        }
+        else if (WIFSIGNALED(status)){
+            printf("Child %d killed by signal: %d\n", pid, WTERMSIG(status));
+        }
+        else if (WIFSTOPPED(status)){
+            printf("Child %d stopped by signal %d\n", pid, WSTOPSIG(status));
+        }
+        // Note: WIFCONTINUED might not be available on all systems
+        else if (WIFSTOPPED(status) == 0){ // Check if process is not stopped
+            printf("Child %d status changed\n", pid);
+        }
+    }
 }
 
 // L integers, H hidden keys, PN process number
@@ -43,8 +75,14 @@ int main(int argc, char* argv[]){
     int H = atoi(argv[2]);
     int PN = 8;
 
+    // Create pipe for secret number
+    if (pipe(secret_pipe) == -1) {
+        printf("Error creating secret pipe\n");
+        return -1;
+    }
+
     if (H > 60 || H < 0){
-        printf("H must be between 30 and 60\n");
+        printf("H must be between 0 and 60\n");
         return -1;
     } else if (H < 0 || L < 0){
         printf("All arguments must be positive\n");
@@ -101,21 +139,40 @@ int main(int argc, char* argv[]){
     *childArg = 1;
 
     char command[50];
-    snprintf(command, sizeof(command), "pstree %d", parentPid);   
+    snprintf(command, sizeof(command), "pstree -p %d", parentPid);   
     system(command);
 
     // Finding Max, Average, Hidden keys
     int fd[4][2];
+    int hiddenCount[4][2]; // New pipe for hidden counts
+    
+    // Create pipes for communication
     if (pipe(fd[0]) == -1 || pipe(fd[1]) == -1 || pipe(fd[2]) == -1 || pipe(fd[3]) == -1){
         printf("Error creating pipe\n");
         return -1;
     }
+    
+    // Create pipes for hidden node counts
+    for (int i = 0; i < 4; i++) {
+        if (pipe(hiddenCount[i]) == -1) {
+            printf("Error creating hidden count pipe\n");
+            return -1;
+        }
+    }
+
+    // Automatically reap terminated children to prevent zombies
+    signal(SIGCHLD, SIG_IGN);
 
     int status;
     int maximum = input[0];
     double average = 0;
     int parentStart = 0;
     int childStart = L / 2;
+    
+    // Store PIDs for each child
+    pid_t childPids[8];
+    int childHiddenCounts[8];
+    int childCount = 0;
 
     pid_t pid1 = fork();
     if (pid1 == -1){
@@ -124,6 +181,7 @@ int main(int argc, char* argv[]){
     }  
     // Parent
     if (pid1 > 0){
+        childPids[childCount++] = pid1;
         childStart = parentStart + L / 4;
 
         printf("Parent %d is waiting for child %d to terminate\n", getpid(), pid1);
@@ -132,6 +190,12 @@ int main(int argc, char* argv[]){
     } 
     // Child
     else{
+        // Setup signal handlers for child
+        signal(SIGUSR1, sigusr1_handler);
+        signal(SIGTERM, secret_signal_handler);
+        signal(SIGALRM, secret_signal_handler);
+        signal(SIGINT, sigint_handler); // Use special handler for SIGINT (Rule 3)
+        
         printf("Child %d starts\n", getpid());
 
         parentStart = childStart;
@@ -145,6 +209,9 @@ int main(int argc, char* argv[]){
     } 
     // Parent
     if (pid2 > 0){
+        if (getpid() != parentPid) {
+            childPids[childCount++] = pid2;
+        }
         childStart = parentStart + L / 8;
 
         printf("Child %d is waiting for child %d to terminate\n", getpid(), pid2);
@@ -153,6 +220,12 @@ int main(int argc, char* argv[]){
     }
     // Child
     else{
+        // Setup signal handlers for child
+        signal(SIGUSR1, sigusr1_handler);
+        signal(SIGTERM, secret_signal_handler);
+        signal(SIGALRM, secret_signal_handler);
+        signal(SIGINT, sigint_handler); // Use special handler for SIGINT (Rule 3)
+        
         printf("Child %d starts\n", getpid());
 
         parentStart = childStart;
@@ -166,6 +239,12 @@ int main(int argc, char* argv[]){
     } 
     // Child
     if (pid3 == 0){
+        // Setup signal handlers for child
+        signal(SIGUSR1, sigusr1_handler);
+        signal(SIGTERM, secret_signal_handler);
+        signal(SIGALRM, secret_signal_handler); 
+        signal(SIGINT, sigint_handler); // Use special handler for SIGINT (Rule 3)
+        
         printf("Child %d starts\n", getpid());
         close(fd[0][0]);
         close(fd[1][0]);
@@ -182,30 +261,52 @@ int main(int argc, char* argv[]){
                 maximum = input[i];
             } else if (input[i] < 0){
                 fprintf(outputFile, "Hi I'm process %d with return arg %d. I found the hidden key in position A[%d].\n", getpid(), *childArg, i);
+                numHiddenNodes++;
                 if (numHiddenNodes <= 2){
                     write(fd[2][1], &input[i], sizeof(int));
                 }
             }
-                average += input[i];
+            average += input[i];
         } 
         fprintf(outputFile, "Hi I'm process %d with return arg %d and my parent is %d\n", getpid(), *childArg, getppid());
 
+        // Write the hidden node count to its parent
+        write(hiddenCount[0][1], &numHiddenNodes, sizeof(int));
+        
         write(fd[0][1], &maximum, sizeof(int));
         write(fd[1][1], &average, sizeof(double));
         write(fd[3][1], &maximum, sizeof(int));
 
         close(fd[0][1]);
         close(fd[1][1]);
+        close(hiddenCount[0][1]);
 
         // Pause child
+        printf("Child %d pausing with %d hidden nodes\n", getpid(), numHiddenNodes);
         raise(SIGTSTP);
 
         printf("Child %d continued\n", getpid());
+        
+        // Create a grandchild to test what happens to offspring of terminated children
+        pid_t grandchild_pid = fork();
+        if (grandchild_pid == 0) {
+            // This is the grandchild
+            printf("Grandchild %d created with parent %d\n", getpid(), getppid());
+            sleep(10); // Give time for parent to potentially be terminated
+            printf("Grandchild %d now has parent %d\n", getpid(), getppid());
+            exit(42); // Exit with special code
+        }
+        
+        sleep(100);  // For Rule 1 - allow time to observe process tree
 
         exit(*childArg);
-        }
-        // Parent
+    }
+    // Parent
     else if (getpid() != parentPid) {
+        if (getpid() != parentPid) {
+            childPids[childCount++] = pid3;
+        }
+        
         close(fd[0][0]);
         close(fd[1][0]);
 
@@ -221,6 +322,7 @@ int main(int argc, char* argv[]){
                 maximum = input[i];
             } else if (input[i] < 0){
                 fprintf(outputFile, "Hi I'm process %d with return arg %d. I found the hidden key in position A[%d].\n", getpid(), *childArg, i);
+                numHiddenNodes++;
                 if (numHiddenNodes <= 2){
                     write(fd[2][1], &input[i], sizeof(int));
                 }
@@ -229,11 +331,15 @@ int main(int argc, char* argv[]){
         } 
         fprintf(outputFile, "Hi I'm process %d with return arg %d and my parent is %d\n", getpid(), *childArg, getppid());
 
+        // Write the hidden node count to its parent
+        write(hiddenCount[0][1], &numHiddenNodes, sizeof(int));
+        
         write(fd[0][1], &maximum, sizeof(int));
         write(fd[1][1], &average, sizeof(double));
 
         close(fd[0][1]);
         close(fd[1][1]);
+        close(hiddenCount[0][1]);
 
         printf("Child %d is waiting for child %d to terminate\n", getpid(), pid3);
         int w = waitpid(pid3, &status, WUNTRACED);
@@ -241,37 +347,129 @@ int main(int argc, char* argv[]){
 
         int childMax;
         read(fd[3][0], &childMax, sizeof(int));
-
-        // Rule 1
-        if (childMax > maximum){
+        
+        // Read child's hidden node count
+        int childHiddenCount;
+        read(hiddenCount[0][0], &childHiddenCount, sizeof(int));
+        close(hiddenCount[0][0]);
+        
+        childHiddenCounts[childCount-1] = childHiddenCount;
+        
+        // Find max and min hidden counts
+        int maxHiddenCount = childHiddenCount;
+        int minHiddenCount = childHiddenCount;
+        
+        for (int i = 0; i < childCount; i++) {
+            if (childHiddenCounts[i] > maxHiddenCount) {
+                maxHiddenCount = childHiddenCounts[i];
+            }
+            if (childHiddenCounts[i] < minHiddenCount) {
+                minHiddenCount = childHiddenCounts[i];
+            }
+        }
+        
+        // Rule 1: If child has highest number of hidden nodes
+        if (childHiddenCount == maxHiddenCount) {
+            printf("Child %d has highest hidden nodes (%d). Sending SIGCONT.\n", 
+                   pid3, childHiddenCount);
             kill(pid3, SIGCONT);
-        }else{
-            printf("Child %d terminated\n", pid3);
-            kill(pid3, SIGKILL);
+        }
+        // Rule 2: If child has neither highest nor lowest number of hidden nodes
+        else if (childHiddenCount != minHiddenCount) {
+            printf("Child %d has middle hidden nodes (%d). Sending SIGUSR1 with secret number.\n", 
+                   pid3, childHiddenCount);
+            
+            // Set secret number (using SIGTERM) and write to pipe
+            int secret = SIGTERM;
+            write(secret_pipe[1], &secret, sizeof(int));
+            
+            // Wake up the child first
+            kill(pid3, SIGCONT);
+            
+            // Send SIGUSR1 to communicate the secret number
+            kill(pid3, SIGUSR1);
+            
+            // Wait for the child to terminate
+            int term_status;
+            waitpid(pid3, &term_status, 0);
+            printf("Child %d has terminated with status %d\n", pid3, term_status);
+            
+            // Check if the child's children were terminated or adopted
+            char ps_command[100];
+            sprintf(ps_command, "ps -o pid,ppid,state,cmd --forest | grep -v grep | grep %d", pid3);
+            system(ps_command);
+            
+            // Print explanation of what's happening with offspring
+            printf("Checking if offspring of terminated process %d were adopted by init or terminated\n", pid3);
         }
 
         exit(*childArg);
-
     }
 
     // First Parent Process
-    if (parentPid == getpid()){
+    if (parentPid == getpid()) {
         close(fd[0][1]);
         close(fd[1][1]);
 
-        int w = waitpid(pid3, &status, WUNTRACED);
-        childTerminationAnalysis(pid3, w, status);
+        int w = waitpid(pid1, &status, WUNTRACED);
+        childTerminationAnalysis(pid1, w, status);
 
-        int childMax;
-        read(fd[3][0], &childMax, sizeof(int));
-
-        // Rule 1
-        if (childMax > maximum){
-            kill(pid3, SIGCONT);
-        }else{
-            printf("Child %d terminated\n", pid3);
-            kill(pid3, SIGKILL);
+        // Read child's hidden node count
+        int childHiddenCount;
+        read(hiddenCount[0][0], &childHiddenCount, sizeof(int));
+        close(hiddenCount[0][0]);
+        
+        childPids[childCount++] = pid1;
+        childHiddenCounts[childCount-1] = childHiddenCount;
+        
+        // Find max and min hidden counts
+        int maxHiddenCount = childHiddenCount;
+        int minHiddenCount = childHiddenCount;
+        
+        for (int i = 0; i < childCount; i++) {
+            if (childHiddenCounts[i] > maxHiddenCount) {
+                maxHiddenCount = childHiddenCounts[i];
+            }
+            if (childHiddenCounts[i] < minHiddenCount) {
+                minHiddenCount = childHiddenCounts[i];
+            }
         }
+        
+        // Rule 1: If child has highest number of hidden nodes
+        if (childHiddenCount == maxHiddenCount) {
+            printf("Child %d has highest hidden nodes (%d). Sending SIGCONT.\n", 
+                   pid1, childHiddenCount);
+            kill(pid1, SIGCONT);
+        }
+        // Rule 2: If child has neither highest nor lowest number of hidden nodes
+        else if (childHiddenCount != minHiddenCount) {
+            printf("Child %d has middle hidden nodes (%d). Sending SIGUSR1 with secret number.\n", 
+                   pid1, childHiddenCount);
+            
+            // Set secret number (using SIGTERM) and write to pipe
+            int secret = SIGTERM;
+            write(secret_pipe[1], &secret, sizeof(int));
+            
+            // Wake up the child first
+            kill(pid1, SIGCONT);
+            
+            // Send SIGUSR1 to communicate the secret number
+            kill(pid1, SIGUSR1);
+            
+            // Wait for the child to terminate and analyze
+            int term_status;
+            waitpid(pid1, &term_status, 0);
+            printf("Child %d has terminated with status %d\n", pid1, term_status);
+            
+            // Check if the child's children were terminated or adopted
+            char ps_command[100];
+            sprintf(ps_command, "ps -o pid,ppid,state,cmd --forest | grep -v grep | grep %d", pid1);
+            system(ps_command);
+            
+            // Print explanation of what's happening with offspring
+            printf("Checking if offspring of terminated process %d were adopted by init or terminated\n", pid1);
+        }
+        
 
         int hiddenNodesTotal = 0;
 
@@ -313,6 +511,11 @@ int main(int argc, char* argv[]){
         programTime = ( (double) (end - start)) / CLOCKS_PER_SEC;
 
         printf("Program took %f seconds to run\n", programTime);
+        
+        // Close pipes that are no longer needed
+        close(secret_pipe[0]);
+        close(secret_pipe[1]);
+        
         return 0;
     }
 }

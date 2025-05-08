@@ -1,13 +1,26 @@
-Hi I'm process 1910461 with return arg 2. I found the hidden key in position A[55].
-Hi I'm process 1910461 with return arg 3. I found the hidden key in position A[56].
-Hi I'm process 1910461 with return arg 3. I found the hidden key in position A[58].
-Hi I'm process 1910461 with return arg 3. I found the hidden key in position A[62].
-Hi I'm process 1910461 with return arg 3. I found the hidden key in position A[63].
-Hi I'm process 1910461 with return arg 3 and my parent is 1910460
-Hi I'm process 1910462 with return arg 3. I found the hidden key in position A[68].
-Hi I'm process 1910462 with return arg 3. I found the hidden key in position A[69].
-Hi I'm process 1910462 with return arg 3. I found the hidden key in position A[70].
-Hi I'm process 1910462 with return arg 3. I found the hidden key in position A[71].
-Hi I'm process 1910462 with return arg 3. I found the hidden key in position A[72].
-Hi I'm process 1910462 with return arg 3 and my parent is 1910461
-
+Hi I'm process 22916 with return arg 3. I found the hidden key in position A[52].
+Hi I'm process 22916 with return arg 3. I found the hidden key in position A[55].
+Hi I'm process 22916 with return arg 3. I found the hidden key in position A[56].
+Hi I'm process 22916 with return arg 3. I found the hidden key in position A[57].
+Hi I'm process 22916 with return arg 3 and my parent is 22915
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[35].
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[36].
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[37].
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[40].
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[41].
+Hi I'm process 22915 with return arg 5. I found the hidden key in position A[42].
+Hi I'm process 22915 with return arg 5 and my parent is 22912
+Hi I'm process 22929 with return arg 7. I found the hidden key in position A[18].
+Hi I'm process 22929 with return arg 7. I found the hidden key in position A[19].
+Hi I'm process 22929 with return arg 7. I found the hidden key in position A[23].
+Hi I'm process 22929 with return arg 7. I found the hidden key in position A[24].
+Hi I'm process 22929 with return arg 7 and my parent is 22912
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[0].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[2].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[3].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[4].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[5].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[12].
+Hi I'm process 22912 with return arg 1. I found the hidden key in position A[13].
+Max = 42, Avg = -6.957143
+Hidden Nodes Total = -250
